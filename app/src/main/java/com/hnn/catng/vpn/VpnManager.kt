@@ -38,7 +38,6 @@ object VpnManager {
     fun startVpn(context: Context, config: ConfigItem) {
         val intent = VpnService.prepare(context)
         if (intent != null && context is Activity) {
-            // نیاز به تأیید کاربر برای اتصال VPN
             context.startActivityForResult(intent, 100)
             return
         }
@@ -50,8 +49,11 @@ object VpnManager {
 
         val serviceIntent = Intent(context, CatVpnService::class.java).apply {
             action = CatVpnService.ACTION_CONNECT
+            putExtra(CatVpnService.EXTRA_CONFIG_ID, config.id)
             putExtra(CatVpnService.EXTRA_CONFIG_NAME, config.name)
             putExtra(CatVpnService.EXTRA_CONFIG_JSON, config.rawJson ?: "")
+            putExtra(CatVpnService.EXTRA_SERVER_HOST, config.server)
+            putExtra(CatVpnService.EXTRA_SERVER_PORT, config.port)
         }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {

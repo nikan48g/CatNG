@@ -4,31 +4,37 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.hnn.catng.MainActivity
+import com.hnn.catng.model.ConfigItem
 import com.hnn.catng.model.ConnectionStatus
+import com.hnn.catng.parser.ConfigParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 
 class CatVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var statsJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Default)
+    private val trafficMonitor = RealTrafficMonitor()
 
     companion object {
         const val ACTION_CONNECT = "com.hnn.catng.CONNECT"
         const val ACTION_DISCONNECT = "com.hnn.catng.DISCONNECT"
+        const val EXTRA_CONFIG_ID = "extra_config_id"
         const val EXTRA_CONFIG_NAME = "extra_config_name"
         const val EXTRA_CONFIG_JSON = "extra_config_json"
+        const val EXTRA_SERVER_HOST = "extra_server_host"
+        const val EXTRA_SERVER_PORT = "extra_server_port"
         const val CHANNEL_ID = "catng_vpn_channel"
         const val NOTIFICATION_ID = 1001
     }
@@ -43,7 +49,9 @@ class CatVpnService : VpnService() {
             ACTION_CONNECT -> {
                 val configName = intent.getStringExtra(EXTRA_CONFIG_NAME) ?: "CatNG Server"
                 val configJson = intent.getStringExtra(EXTRA_CONFIG_JSON) ?: ""
-                startVpn(configName, configJson)
+                val serverHost = intent.getStringExtra(EXTRA_SERVER_HOST) ?: ""
+                val serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 443)
+                startVpn(configName, configJson, serverHost, serverPort)
             }
             ACTION_DISCONNECT -> {
                 stopVpn()
@@ -52,25 +60,45 @@ class CatVpnService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun startVpn(configName: String, configJson: String) {
+    private fun startVpn(configName: String, configJson: String, serverHost: String, serverPort: Int) {
         try {
             VpnManager.updateStatus(ConnectionStatus.CONNECTING)
 
+            // آماده‌سازی فایل کانفیگ و استخراج geoip/geosite
+            val dummyConfig = ConfigItem(
+                name = configName,
+                server = serverHost,
+                port = serverPort,
+                rawJson = configJson
+            )
+            val configFile = XrayCoreManager.prepareConfigFile(this, dummyConfig)
+
+            // راه‌اندازی اینترفیس TUN استاندارد VPN
             val builder = Builder()
-                .setSession("CatNG VPN")
+                .setSession("CatNG ($configName)")
                 .setMtu(1500)
                 .addAddress("172.19.0.1", 30)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .addRoute("0.0.0.0", 0)
 
+            // بای‌پس کردن پکت‌های خود اینترفیس تا حلقه روتینگ ایجاد نشود
+            if (serverHost.isNotBlank()) {
+                try {
+                    builder.addDisallowedApplication(packageName)
+                } catch (_: Exception) {
+                }
+            }
+
             vpnInterface = builder.establish()
 
-            startForeground(NOTIFICATION_ID, buildNotification(configName, "Connected"))
-            VpnManager.updateStatus(ConnectionStatus.CONNECTED)
-
-            // شروع شبیه‌ساز آمار ترافیک زنده و تست زنده
-            startStatsUpdater()
+            if (vpnInterface != null) {
+                startForeground(NOTIFICATION_ID, buildNotification(configName, "Connected"))
+                VpnManager.updateStatus(ConnectionStatus.CONNECTED)
+                startRealTrafficMonitor()
+            } else {
+                throw Exception("Failed to establish TUN interface")
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             VpnManager.updateStatus(ConnectionStatus.DISCONNECTED)
@@ -92,28 +120,23 @@ class CatVpnService : VpnService() {
         stopSelf()
     }
 
-    private fun startStatsUpdater() {
+    private fun startRealTrafficMonitor() {
         statsJob?.cancel()
+        trafficMonitor.start()
         statsJob = serviceScope.launch {
-            var totalDown = 0L
-            var totalUp = 0L
             var seconds = 0L
 
             while (isActive && VpnManager.vpnState.value.status == ConnectionStatus.CONNECTED) {
                 delay(1000)
                 seconds++
 
-                // شبیه‌سازی فعالیت ترافیک زنده
-                val downSpeed = (150_000L..1_800_000L).random()
-                val upSpeed = (30_000L..450_000L).random()
-                totalDown += downSpeed
-                totalUp += upSpeed
+                val sample = trafficMonitor.sample()
 
                 VpnManager.updateLiveStats(
-                    upSpeed = upSpeed,
-                    downSpeed = downSpeed,
-                    totalUp = totalUp,
-                    totalDown = totalDown,
+                    upSpeed = sample.uploadSpeedBps,
+                    downSpeed = sample.downloadSpeedBps,
+                    totalUp = sample.totalUploaded,
+                    totalDown = sample.totalDownloaded,
                     durationSeconds = seconds
                 )
             }

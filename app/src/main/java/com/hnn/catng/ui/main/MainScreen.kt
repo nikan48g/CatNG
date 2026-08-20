@@ -7,13 +7,12 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,16 +23,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentPaste
@@ -43,18 +45,13 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,17 +74,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hnn.catng.model.ConfigItem
 import com.hnn.catng.model.ConnectionStatus
-import com.hnn.catng.model.SortType
 import com.hnn.catng.ui.dialogs.AddManualConfigDialog
 import com.hnn.catng.ui.dialogs.AddSubscriptionDialog
 import com.hnn.catng.ui.dialogs.ConfigJsonViewerDialog
@@ -119,7 +115,6 @@ fun MainScreen(viewModel: MainViewModel) {
     val isTestingPings by viewModel.isTestingPings.collectAsState()
 
     var showMenu by remember { mutableStateOf(false) }
-    var showManualProtocolMenu by remember { mutableStateOf(false) }
     var showAddSubDialog by remember { mutableStateOf(false) }
     var showAddManualConfigDialog by remember { mutableStateOf(false) }
     var manualConfigProtocol by remember { mutableStateOf("VLESS") }
@@ -133,7 +128,7 @@ fun MainScreen(viewModel: MainViewModel) {
         }
     }
 
-    // تشخیص نام گروه در حال نمایش
+    // نام گروه فعلی
     val currentGroupName = if (selectedSubId == null || selectedSubId == "ALL") {
         "All"
     } else {
@@ -145,77 +140,86 @@ fun MainScreen(viewModel: MainViewModel) {
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Bolt,
                                     contentDescription = "CatNG",
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "CatNG",
-                            style = MaterialTheme.typography.titleLarge.copy(
+                            style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.5.sp
-                            )
+                            ),
+                            maxLines = 1
                         )
                     }
                 },
                 actions = {
-                    // دکمه فولدری سابسکریپشن‌ها
+                    // فیلتر فولدری سابسکریپشن‌ها با عرض انطباق‌پذیر
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier
                             .clickable { showSubSelectorDialog = true }
-                            .padding(end = 4.dp)
+                            .padding(end = 2.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.FolderOpen,
                                 contentDescription = "Subscriptions",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = currentGroupName,
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 100.dp)
                             )
                         }
                     }
 
-                    // دکمه تست پینگ سریع
+                    // دکمه پینگ سریع
                     IconButton(
                         onClick = { viewModel.testAllCurrentConfigs() },
-                        enabled = !isTestingPings && configs.isNotEmpty()
+                        enabled = !isTestingPings && configs.isNotEmpty(),
+                        modifier = Modifier.size(36.dp)
                     ) {
                         if (isTestingPings) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.Speed, contentDescription = "Test Ping")
+                            Icon(Icons.Default.Speed, contentDescription = "Test Ping", modifier = Modifier.size(20.dp))
                         }
                     }
 
                     // منوی ۳ نقطه
                     Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu", modifier = Modifier.size(20.dp))
                         }
 
                         DropdownMenu(
@@ -261,7 +265,7 @@ fun MainScreen(viewModel: MainViewModel) {
 
                             DropdownMenuItem(
                                 text = { Text("Sort") },
-                                leadingIcon = { Icon(Icons.Default.Sort, contentDescription = null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
                                 onClick = {
                                     showMenu = false
                                     showSortDialog = true
@@ -301,8 +305,8 @@ fun MainScreen(viewModel: MainViewModel) {
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(configs, key = { it.id }) { config ->
                         ConfigCard(
@@ -379,7 +383,7 @@ private fun ConfigCard(
     val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
@@ -389,7 +393,7 @@ private fun ConfigCard(
             .fillMaxWidth()
             .clickable(onClick = onSelect)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -397,15 +401,15 @@ private fun ConfigCard(
                 RadioButton(
                     selected = isSelected,
                     onClick = onSelect,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(20.dp)
                 )
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = config.name,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -419,7 +423,7 @@ private fun ConfigCard(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
                 // نشانگر پروتکل
                 Surface(
@@ -435,42 +439,41 @@ private fun ConfigCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // ردیف پایین کارت: پینگ و اکشن‌ها
+            // ردیف پایین کارت
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // بج پینگ
                 PingBadge(pingMs = config.pingMs, onTest = onTestPing)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onViewJson, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = onViewJson, modifier = Modifier.size(28.dp)) {
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = "View Config",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    IconButton(onClick = onTestPing, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = onTestPing, modifier = Modifier.size(28.dp)) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Test Ping",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete",
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -490,20 +493,20 @@ private fun PingBadge(pingMs: Long?, onTest: () -> Unit) {
     }
 
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(6.dp),
         color = color.copy(alpha = 0.15f),
         modifier = Modifier.clickable(onClick = onTest)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(8.dp)
+                    .size(6.dp)
                     .background(color, shape = CircleShape)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
@@ -520,7 +523,6 @@ private fun BottomConnectionBar(
     onToggleConnect: () -> Unit
 ) {
     val isConnected = vpnState.status == ConnectionStatus.CONNECTED
-    val isConnecting = vpnState.status == ConnectionStatus.CONNECTING
 
     val statusText = when (vpnState.status) {
         ConnectionStatus.CONNECTED -> "Connected"
@@ -539,7 +541,7 @@ private fun BottomConnectionBar(
     )
 
     Surface(
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
@@ -547,25 +549,25 @@ private fun BottomConnectionBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            // ردیف اطلاعات زنده سرعت و وضعیت
+            // ردیف اطلاعات وضعیت و ترافیک زنده
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
+                                .size(8.dp)
                                 .background(statusColor, shape = CircleShape)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = statusText,
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                             color = statusColor
                         )
                     }
@@ -575,16 +577,15 @@ private fun BottomConnectionBar(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.width(180.dp)
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // اطلاعات سرعت زنده
+                // اطلاعات سرعت زنده واقعی
                 if (isConnected) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         SpeedStatItem(
                             icon = Icons.Default.ArrowDownward,
@@ -600,9 +601,9 @@ private fun BottomConnectionBar(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // دکمه اتصال / قطع
+            // دکمه اتصال
             ButtonConnect(
                 status = vpnState.status,
                 onClick = onToggleConnect
@@ -623,12 +624,12 @@ private fun SpeedStatItem(
             imageVector = icon,
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(14.dp)
         )
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(2.dp))
         Text(
             text = speedText,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -654,7 +655,7 @@ private fun ButtonConnect(
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (isConnecting) 1.08f else 1f,
+        targetValue = if (isConnecting) 1.05f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(800),
             repeatMode = RepeatMode.Reverse
@@ -673,11 +674,11 @@ private fun ButtonConnect(
 
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         color = buttonColor,
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(48.dp)
             .scale(pulseScale)
     ) {
         Row(
@@ -688,13 +689,13 @@ private fun ButtonConnect(
             if (isConnecting) {
                 CircularProgressIndicator(
                     color = Color.Black,
-                    strokeWidth = 2.5.dp,
-                    modifier = Modifier.size(20.dp)
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Connecting...",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.Black
                 )
             } else {
@@ -702,12 +703,12 @@ private fun ButtonConnect(
                     imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.PowerSettingsNew,
                     contentDescription = null,
                     tint = if (isConnected) Color.Black else MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
                 )
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = if (isConnected) "Disconnect" else "Tap To Connect",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = if (isConnected) Color.Black else MaterialTheme.colorScheme.onPrimary
                 )
             }
@@ -724,66 +725,67 @@ private fun EmptyStateView(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.size(90.dp)
+            modifier = Modifier.size(80.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.FolderOpen,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(46.dp)
+                    modifier = Modifier.size(40.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Text(
             text = "No Configs Available",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Text(
             text = "Add a subscription link, paste your Xray JSON configs or create one manually.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             OutlinedButton(
                 onClick = onPasteClick,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Paste")
+                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Paste", style = MaterialTheme.typography.labelMedium)
             }
 
             OutlinedButton(
                 onClick = onAddSubClick,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Add Sub")
+                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Sub", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
