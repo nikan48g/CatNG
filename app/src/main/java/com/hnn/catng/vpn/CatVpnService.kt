@@ -12,19 +12,22 @@ import androidx.core.app.NotificationCompat
 import com.hnn.catng.MainActivity
 import com.hnn.catng.model.ConfigItem
 import com.hnn.catng.model.ConnectionStatus
-import com.hnn.catng.parser.ConfigParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import libv2ray.CoreCallbackHandler
+import libv2ray.CoreController
+import libv2ray.Libv2ray
 import java.io.File
 
 class CatVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var coreController: CoreController? = null
     private var statsJob: Job? = null
-    private val serviceScope = CoroutineScope(Dispatchers.Default)
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
     private val trafficMonitor = RealTrafficMonitor()
 
     companion object {
@@ -42,6 +45,11 @@ class CatVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        try {
+            Libv2ray.initCoreEnv(filesDir.absolutePath, filesDir.absolutePath)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -64,7 +72,7 @@ class CatVpnService : VpnService() {
         try {
             VpnManager.updateStatus(ConnectionStatus.CONNECTING)
 
-            // آماده‌سازی فایل کانفیگ و استخراج geoip/geosite
+            // ۱. آماده‌سازی فایل‌های هسته و کانفیگ
             val dummyConfig = ConfigItem(
                 name = configName,
                 server = serverHost,
@@ -72,8 +80,9 @@ class CatVpnService : VpnService() {
                 rawJson = configJson
             )
             val configFile = XrayCoreManager.prepareConfigFile(this, dummyConfig)
+            val finalJson = configFile.readText()
 
-            // راه‌اندازی اینترفیس TUN استاندارد VPN
+            // ۲. ساخت اینترفیس TUN
             val builder = Builder()
                 .setSession("CatNG ($configName)")
                 .setMtu(1500)
@@ -82,7 +91,6 @@ class CatVpnService : VpnService() {
                 .addDnsServer("8.8.8.8")
                 .addRoute("0.0.0.0", 0)
 
-            // بای‌پس کردن پکت‌های خود اینترفیس تا حلقه روتینگ ایجاد نشود
             if (serverHost.isNotBlank()) {
                 try {
                     builder.addDisallowedApplication(packageName)
@@ -93,6 +101,32 @@ class CatVpnService : VpnService() {
             vpnInterface = builder.establish()
 
             if (vpnInterface != null) {
+                val fd = vpnInterface!!.fd
+
+                // ۳. راه‌اندازی واقعی هسته Xray با Libv2ray CoreController
+                val callback = object : CoreCallbackHandler {
+                    override fun onEmitStatus(status: Long, msg: String?): Long {
+                        return 0
+                    }
+
+                    override fun startup(): Long {
+                        return 0
+                    }
+
+                    override fun shutdown(): Long {
+                        return 0
+                    }
+                }
+
+                coreController = Libv2ray.newCoreController(callback)
+                serviceScope.launch(Dispatchers.IO) {
+                    try {
+                        coreController?.startLoop(finalJson, fd)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
                 startForeground(NOTIFICATION_ID, buildNotification(configName, "Connected"))
                 VpnManager.updateStatus(ConnectionStatus.CONNECTED)
                 startRealTrafficMonitor()
@@ -109,12 +143,21 @@ class CatVpnService : VpnService() {
     private fun stopVpn() {
         VpnManager.updateStatus(ConnectionStatus.DISCONNECTING)
         statsJob?.cancel()
+
+        try {
+            coreController?.stopLoop()
+            coreController = null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         try {
             vpnInterface?.close()
             vpnInterface = null
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
         VpnManager.updateStatus(ConnectionStatus.DISCONNECTED)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()

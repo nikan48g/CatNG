@@ -12,16 +12,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -128,7 +131,6 @@ fun MainScreen(viewModel: MainViewModel) {
         }
     }
 
-    // نام گروه فعلی
     val currentGroupName = if (selectedSubId == null || selectedSubId == "ALL") {
         "All"
     } else {
@@ -136,9 +138,11 @@ fun MainScreen(viewModel: MainViewModel) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
+                modifier = Modifier.statusBarsPadding(),
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -170,7 +174,6 @@ fun MainScreen(viewModel: MainViewModel) {
                     }
                 },
                 actions = {
-                    // فیلتر فولدری سابسکریپشن‌ها با عرض انطباق‌پذیر
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -200,7 +203,6 @@ fun MainScreen(viewModel: MainViewModel) {
                         }
                     }
 
-                    // دکمه پینگ سریع
                     IconButton(
                         onClick = { viewModel.testAllCurrentConfigs() },
                         enabled = !isTestingPings && configs.isNotEmpty(),
@@ -213,7 +215,6 @@ fun MainScreen(viewModel: MainViewModel) {
                         }
                     }
 
-                    // منوی ۳ نقطه
                     Box {
                         IconButton(
                             onClick = { showMenu = true },
@@ -305,7 +306,7 @@ fun MainScreen(viewModel: MainViewModel) {
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(configs, key = { it.id }) { config ->
@@ -323,7 +324,6 @@ fun MainScreen(viewModel: MainViewModel) {
         }
     }
 
-    // دیالوگ‌ها
     if (showAddSubDialog) {
         AddSubscriptionDialog(
             onDismiss = { showAddSubDialog = false },
@@ -425,7 +425,6 @@ private fun ConfigCard(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // نشانگر پروتکل
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
@@ -441,7 +440,6 @@ private fun ConfigCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // ردیف پایین کارت
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -544,14 +542,15 @@ private fun BottomConnectionBar(
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding() // جلوگیری کامل از تداخل با کلیدهای نوار ناوبری اندروید
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            // ردیف اطلاعات وضعیت و ترافیک زنده
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -581,7 +580,6 @@ private fun BottomConnectionBar(
                     )
                 }
 
-                // اطلاعات سرعت زنده واقعی
                 if (isConnected) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -603,7 +601,6 @@ private fun BottomConnectionBar(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // دکمه اتصال
             ButtonConnect(
                 status = vpnState.status,
                 onClick = onToggleConnect
