@@ -21,7 +21,6 @@ import kotlinx.coroutines.launch
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
-import java.io.File
 
 class CatVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -46,6 +45,7 @@ class CatVpnService : VpnService() {
         super.onCreate()
         createNotificationChannel()
         try {
+            // استخراج و راه‌اندازی فایل‌های geoip و geosite
             Libv2ray.initCoreEnv(filesDir.absolutePath, filesDir.absolutePath)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -72,7 +72,7 @@ class CatVpnService : VpnService() {
         try {
             VpnManager.updateStatus(ConnectionStatus.CONNECTING)
 
-            // ۱. آماده‌سازی فایل‌های هسته و کانفیگ
+            // ۱. آماده‌سازی فایل کانفیگ JSON استاندارد با تزریق Inbounds
             val dummyConfig = ConfigItem(
                 name = configName,
                 server = serverHost,
@@ -86,16 +86,18 @@ class CatVpnService : VpnService() {
             val builder = Builder()
                 .setSession("CatNG ($configName)")
                 .setMtu(1500)
-                .addAddress("172.19.0.1", 30)
+                .addAddress("26.26.26.1", 24)
+                .addAddress("fdfe:dcba:9876::1", 126)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
 
-            if (serverHost.isNotBlank()) {
-                try {
-                    builder.addDisallowedApplication(packageName)
-                } catch (_: Exception) {
-                }
+            // جلوگیری از لوپ شدن ترافیک با بای‌پَس کردن خود اپلیکیشن
+            try {
+                builder.addDisallowedApplication(packageName)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
 
             vpnInterface = builder.establish()
@@ -103,7 +105,7 @@ class CatVpnService : VpnService() {
             if (vpnInterface != null) {
                 val fd = vpnInterface!!.fd
 
-                // ۳. راه‌اندازی واقعی هسته Xray با Libv2ray CoreController
+                // ۳. راه‌اندازی واقعی هسته Xray
                 val callback = object : CoreCallbackHandler {
                     override fun onEmitStatus(status: Long, msg: String?): Long {
                         return 0
@@ -121,9 +123,11 @@ class CatVpnService : VpnService() {
                 coreController = Libv2ray.newCoreController(callback)
                 serviceScope.launch(Dispatchers.IO) {
                     try {
+                        // startLoop ترافیک را از FD (تونل) دریافت کرده و وارد inbounds هسته می‌کند
                         coreController?.startLoop(finalJson, fd)
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        stopVpn()
                     }
                 }
 

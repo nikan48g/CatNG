@@ -216,7 +216,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _isTestingPings.value = true
-            PingTester.testAll(currentList) { configId, pingMs ->
+            PingTester.testAll(getApplication<Application>(), currentList) { configId, pingMs ->
                 repository.updateConfigPing(configId, pingMs)
             }
             _isTestingPings.value = false
@@ -229,7 +229,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun testSinglePing(config: ConfigItem) {
         viewModelScope.launch {
-            val ping = PingTester.testPing(config)
+            val ping = PingTester.testPing(getApplication<Application>(), config)
             repository.updateConfigPing(config.id, ping)
         }
     }

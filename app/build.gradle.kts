@@ -12,13 +12,13 @@ android {
         applicationId = "com.hnn.catng"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.5.0"
+        versionCode = 3
+        versionName = "1.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
+            abiFilters.addAll(listOf("arm64-v8a"))
         }
     }
 
