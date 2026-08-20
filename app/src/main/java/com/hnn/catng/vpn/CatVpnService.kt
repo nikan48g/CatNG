@@ -21,6 +21,10 @@ import kotlinx.coroutines.launch
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class CatVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -41,13 +45,21 @@ class CatVpnService : VpnService() {
         const val NOTIFICATION_ID = 1001
     }
 
+    private fun logCrash(e: Exception) {
+        try {
+            val logFile = File(filesDir, "vpn_crash.log")
+            val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+            logFile.appendText("[$time] ${e.message}\n${e.stackTraceToString()}\n\n")
+        } catch (_: Exception) {}
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         try {
-            // استخراج و راه‌اندازی فایل‌های geoip و geosite
             Libv2ray.initCoreEnv(filesDir.absolutePath, filesDir.absolutePath)
         } catch (e: Exception) {
+            logCrash(e)
             e.printStackTrace()
         }
     }
@@ -72,7 +84,6 @@ class CatVpnService : VpnService() {
         try {
             VpnManager.updateStatus(ConnectionStatus.CONNECTING)
 
-            // ۱. آماده‌سازی فایل کانفیگ JSON استاندارد با تزریق Inbounds
             val dummyConfig = ConfigItem(
                 name = configName,
                 server = serverHost,
@@ -82,7 +93,6 @@ class CatVpnService : VpnService() {
             val configFile = XrayCoreManager.prepareConfigFile(this, dummyConfig)
             val finalJson = configFile.readText()
 
-            // ۲. ساخت اینترفیس TUN
             val builder = Builder()
                 .setSession("CatNG ($configName)")
                 .setMtu(1500)
@@ -93,10 +103,10 @@ class CatVpnService : VpnService() {
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
 
-            // جلوگیری از لوپ شدن ترافیک با بای‌پَس کردن خود اپلیکیشن
             try {
                 builder.addDisallowedApplication(packageName)
             } catch (e: Exception) {
+                logCrash(e)
                 e.printStackTrace()
             }
 
@@ -105,7 +115,6 @@ class CatVpnService : VpnService() {
             if (vpnInterface != null) {
                 val fd = vpnInterface!!.fd
 
-                // ۳. راه‌اندازی واقعی هسته Xray
                 val callback = object : CoreCallbackHandler {
                     override fun onEmitStatus(status: Long, msg: String?): Long {
                         return 0
@@ -123,9 +132,9 @@ class CatVpnService : VpnService() {
                 coreController = Libv2ray.newCoreController(callback)
                 serviceScope.launch(Dispatchers.IO) {
                     try {
-                        // startLoop ترافیک را از FD (تونل) دریافت کرده و وارد inbounds هسته می‌کند
                         coreController?.startLoop(finalJson, fd)
                     } catch (e: Exception) {
+                        logCrash(e)
                         e.printStackTrace()
                         stopVpn()
                     }
@@ -138,6 +147,7 @@ class CatVpnService : VpnService() {
                 throw Exception("Failed to establish TUN interface")
             }
         } catch (e: Exception) {
+            logCrash(e)
             e.printStackTrace()
             VpnManager.updateStatus(ConnectionStatus.DISCONNECTED)
             stopSelf()
@@ -152,6 +162,7 @@ class CatVpnService : VpnService() {
             coreController?.stopLoop()
             coreController = null
         } catch (e: Exception) {
+            logCrash(e)
             e.printStackTrace()
         }
 
@@ -159,6 +170,7 @@ class CatVpnService : VpnService() {
             vpnInterface?.close()
             vpnInterface = null
         } catch (e: Exception) {
+            logCrash(e)
             e.printStackTrace()
         }
 

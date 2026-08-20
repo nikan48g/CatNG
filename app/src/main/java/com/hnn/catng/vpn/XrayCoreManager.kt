@@ -155,3 +155,4 @@ data class TrafficSample(
     val totalDownloaded: Long,
     val totalUploaded: Long
 )
+

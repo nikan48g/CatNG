@@ -12,8 +12,8 @@ android {
         applicationId = "com.hnn.catng"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.5.1"
+        versionCode = 4
+        versionName = "1.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
